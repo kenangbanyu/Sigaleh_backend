@@ -5,25 +5,30 @@ export const getCommodities = async (req, res) => {
   const { wilayah, komoditas, start, end } = req.query;
 
   try {
-    const conditions = [];
+    let query = sql`SELECT * FROM "Komoditas"`;
+    let hasWhere = false;
 
     if (wilayah) {
-      conditions.push(sql`"Wilayah" = ${wilayah}`);
+      query = sql`${query} WHERE "Wilayah" = ${wilayah}`;
+      hasWhere = true;
     }
 
     if (komoditas) {
-      conditions.push(sql`"Komoditas (Rp)" = ${komoditas}`);
+      query = hasWhere
+        ? sql`${query} AND "Komoditas (Rp)" = ${komoditas}`
+        : sql`${query} WHERE "Komoditas (Rp)" = ${komoditas}`;
+      hasWhere = true;
     }
 
     if (start && end) {
-      conditions.push(sql`"Tanggal" BETWEEN ${start} AND ${end}`);
+      query = hasWhere
+        ? sql`${query} AND "Tanggal" BETWEEN ${start} AND ${end}`
+        : sql`${query} WHERE "Tanggal" BETWEEN ${start} AND ${end}`;
     }
 
-    const result = await sql`
-      SELECT * FROM "Komoditas"
-      ${conditions.length ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``}
-      ORDER BY "Tanggal" ASC
-    `;
+    query = sql`${query} ORDER BY "Tanggal" ASC`;
+
+    const result = await query;
 
     res.json(result);
   } catch (err) {
@@ -106,17 +111,30 @@ export const patchCommodity = async (req, res) => {
     wilayah: "Wilayah",
   };
 
-  const updates = Object.entries(fields).map(([key, value]) =>
-    sql`${sql(columnMap[key])} = ${value}`
-  );
-
   try {
-    const result = await sql`
-      UPDATE "Komoditas"
-      SET ${sql.join(updates, sql`, `)}
-      WHERE id = ${id}
-      RETURNING id
-    `;
+    const updates = [];
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (!columnMap[key]) continue; // skip field tidak valid
+
+      updates.push(sql`${sql(columnMap[key])} = ${value}`);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ message: "Field tidak valid" });
+    }
+
+    let query = sql`UPDATE "Komoditas" SET `;
+
+    updates.forEach((u, index) => {
+      query = index === 0
+        ? sql`${query} ${u}`
+        : sql`${query}, ${u}`;
+    });
+
+    query = sql`${query} WHERE id = ${id} RETURNING id`;
+
+    const result = await query;
 
     if (result.length === 0) {
       return res.status(404).json({ message: "Data tidak ditemukan" });

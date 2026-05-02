@@ -5,21 +5,23 @@ export const getWeather = async (req, res) => {
   const { wilayah, start, end } = req.query;
 
   try {
-    const conditions = [];
+    let query = sql`SELECT * FROM "Cuaca"`;
+    let hasWhere = false;
 
     if (wilayah) {
-      conditions.push(sql`"Wilayah" = ${wilayah}`);
+      query = sql`${query} WHERE "Wilayah" = ${wilayah}`;
+      hasWhere = true;
     }
 
     if (start && end) {
-      conditions.push(sql`"Tanggal" BETWEEN ${start} AND ${end}`);
+      query = hasWhere
+        ? sql`${query} AND "Tanggal" BETWEEN ${start} AND ${end}`
+        : sql`${query} WHERE "Tanggal" BETWEEN ${start} AND ${end}`;
     }
 
-    const result = await sql`
-      SELECT * FROM "Cuaca"
-      ${conditions.length ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``}
-      ORDER BY "Tanggal" ASC
-    `;
+    query = sql`${query} ORDER BY "Tanggal" ASC`;
+
+    const result = await query;
 
     res.json(result);
   } catch (err) {
@@ -104,17 +106,31 @@ export const patchWeather = async (req, res) => {
     angin: "Kecepatan_Angin_Max_kmh",
   };
 
-  const updates = Object.entries(fields).map(([key, value]) =>
-    sql`${sql(columnMap[key])} = ${value}`
-  );
-
   try {
-    const result = await sql`
-      UPDATE "Cuaca"
-      SET ${sql.join(updates, sql`, `)}
-      WHERE id = ${id}
-      RETURNING id
-    `;
+    const updates = [];
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (!columnMap[key]) continue; // skip field tidak valid
+
+      updates.push(sql`${sql(columnMap[key])} = ${value}`);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ message: "Field tidak valid" });
+    }
+
+    // build query manual (tanpa sql.join)
+    let query = sql`UPDATE "Cuaca" SET `;
+
+    updates.forEach((u, index) => {
+      query = index === 0
+        ? sql`${query} ${u}`
+        : sql`${query}, ${u}`;
+    });
+
+    query = sql`${query} WHERE id = ${id} RETURNING id`;
+
+    const result = await query;
 
     if (result.length === 0) {
       return res.status(404).json({ message: "Data tidak ditemukan" });
