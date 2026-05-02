@@ -64,7 +64,7 @@ export const createCommodity = async (req, res) => {
   }
 };
 
-// PUT (replace semua field)
+// PUT (replace all fields)
 export const updateCommodity = async (req, res) => {
   const { id } = req.params;
   const { komoditas, tanggal, harga, wilayah } = req.body;

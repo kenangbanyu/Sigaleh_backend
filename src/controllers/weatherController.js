@@ -51,7 +51,7 @@ export const createWeather = async (req, res) => {
   }
 };
 
-// PUT (replace semua field)
+// PUT (replace all fields)
 export const updateWeather = async (req, res) => {
   const { id } = req.params;
   const {
