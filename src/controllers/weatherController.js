@@ -110,7 +110,7 @@ export const patchWeather = async (req, res) => {
     const updates = [];
 
     for (const [key, value] of Object.entries(fields)) {
-      if (!columnMap[key]) continue; // skip field tidak valid
+      if (!columnMap[key]) continue;
 
       updates.push(sql`${sql(columnMap[key])} = ${value}`);
     }
@@ -119,7 +119,6 @@ export const patchWeather = async (req, res) => {
       return res.status(400).json({ message: "Field tidak valid" });
     }
 
-    // build query manual (tanpa sql.join)
     let query = sql`UPDATE "Cuaca" SET `;
 
     updates.forEach((u, index) => {

@@ -115,7 +115,7 @@ export const patchCommodity = async (req, res) => {
     const updates = [];
 
     for (const [key, value] of Object.entries(fields)) {
-      if (!columnMap[key]) continue; // skip field tidak valid
+      if (!columnMap[key]) continue;
 
       updates.push(sql`${sql(columnMap[key])} = ${value}`);
     }
