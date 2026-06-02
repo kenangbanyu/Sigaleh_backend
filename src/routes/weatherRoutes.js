@@ -12,13 +12,14 @@ import {
   patchWeather,
   deleteWeather,
 } from "../controllers/weatherController.js";
+import { authenticate } from "../middlewares/auth.js";
 
 const router = express.Router();
 
 router.get("/", getWeather);
-router.post("/", validate(weatherSchema), createWeather);
-router.put("/:id", validate(weatherSchema), updateWeather);
-router.patch("/:id", validate(weatherPatchSchema), patchWeather);
-router.delete("/:id", validateParams(idParamSchema), deleteWeather);
+router.post("/", authenticate, validate(weatherSchema), createWeather);
+router.put("/:id", authenticate, validate(weatherSchema), validateParams(idParamSchema), updateWeather);
+router.patch("/:id", authenticate, validate(weatherPatchSchema), validateParams(idParamSchema), patchWeather);
+router.delete("/:id", authenticate, validateParams(idParamSchema), deleteWeather);
 
 export default router;
