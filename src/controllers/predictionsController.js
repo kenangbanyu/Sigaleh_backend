@@ -98,44 +98,37 @@ export const runPrediction = async (req, res) => {
 
   try {
 
-    // ambil dataset sesuai filter
-    const dataset = await sql`
-      SELECT *
-      FROM "Dataset"
-      WHERE "Komoditas (Rp)" = ${komoditas}
-      AND "Wilayah" = ${wilayah}
-      ORDER BY "Tanggal" ASC
-    `;
+    // =========================
+    // DELETE OLD PREDICTIONS
+    // =========================
 
-
-    // validasi dataset kosong
-    if (dataset.length === 0) {
-      return res.status(404).json({
-        message: "Dataset tidak ditemukan",
-      });
-    }
-
-    // hapus prediksi lama
     await sql`
       DELETE FROM "Prediksi"
       WHERE "Komoditas" = ${komoditas}
       AND "Wilayah" = ${wilayah}
     `;
 
-    // hapus evaluasi lama
+
+    // =========================
+    // DELETE OLD EVALUATIONS
+    // =========================
+
     await sql`
       DELETE FROM "Evaluasi"
       WHERE "Komoditas" = ${komoditas}
       AND "Wilayah" = ${wilayah}
     `;
 
-    // kirim ke ML service
+
+    // =========================
+    // CALL ML SERVICE
+    // =========================
+
     const mlResponse = await axios.post(
       process.env.ML_SERVICE_URL,
       {
-        komoditas,
-        wilayah,
-        dataset,
+        commodity: komoditas,
+        city: wilayah,
       }
     );
 
@@ -144,7 +137,20 @@ export const runPrediction = async (req, res) => {
 
 
     // =========================
-    // HISTORICAL PREDICTIONS
+    // HANDLE ML ERROR
+    // =========================
+
+    if (result.error) {
+
+      return res.status(400).json({
+        message: "Prediksi gagal",
+        error: result.error,
+      });
+    }
+
+
+    // =========================
+    // SAVE HISTORICAL PREDICTIONS
     // =========================
 
     for (const item of result.historical_predictions) {
@@ -171,9 +177,8 @@ export const runPrediction = async (req, res) => {
     }
 
 
-
     // =========================
-    // FUTURE PREDICTIONS
+    // SAVE FUTURE PREDICTIONS
     // =========================
 
     for (const item of result.future_predictions) {
@@ -198,7 +203,6 @@ export const runPrediction = async (req, res) => {
         )
       `;
     }
-
 
 
     // =========================
@@ -227,17 +231,30 @@ export const runPrediction = async (req, res) => {
       )
     `;
 
-    // invalidate predictions cache
+
+    // =========================
+    // INVALIDATE CACHE
+    // =========================
+
     await clearCacheByPrefix("/predictions");
 
-    // invalidate evaluations cache
     await clearCacheByPrefix("/evaluations");
 
-    res.json({
-      message: "Prediksi berhasil dijalankan",
 
-      komoditas: result.komoditas,
-      wilayah: result.wilayah,
+    // =========================
+    // SUCCESS RESPONSE
+    // =========================
+
+    res.json({
+
+      message:
+        "Prediksi berhasil dijalankan",
+
+      komoditas:
+        result.komoditas,
+
+      wilayah:
+        result.wilayah,
 
       historical_prediction_count:
         result.historical_predictions.length,
@@ -245,7 +262,8 @@ export const runPrediction = async (req, res) => {
       future_prediction_count:
         result.future_predictions.length,
 
-      metrics: result.metrics,
+      metrics:
+        result.metrics,
     });
 
   } catch (err) {
