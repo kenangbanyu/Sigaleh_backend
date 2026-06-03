@@ -26,7 +26,7 @@ export const getDashboard = async (req, res) => {
   try {
 
     // =========================
-    // AMBIL PREDIKSI
+    // GET PREDICTIONS
     // =========================
 
     const predictions = await sql`
@@ -44,7 +44,7 @@ export const getDashboard = async (req, res) => {
     }
 
     // =========================
-    // AMBIL EVALUASI TERBARU
+    // GET EVALUATION
     // =========================
 
     const evaluation = await sql`
@@ -69,48 +69,51 @@ export const getDashboard = async (req, res) => {
     );
 
     // =========================
-    // METRIC CARDS
+    // BASIC ARRAYS
     // =========================
 
-    const historicalPrices = historical.map((p) =>
+    const actuals = historical.map((p) =>
       Number(p.Harga_Aktual)
     );
 
+    const preds = historical.map((p) =>
+      Number(p.Harga_Prediksi)
+    );
+
+    // =========================
+    // METRIC CARDS
+    // =========================
+
     const lastPrice =
-      historicalPrices[historicalPrices.length - 1];
+      actuals[actuals.length - 1];
 
     const prevPrice =
-      historicalPrices.length >= 2
-        ? historicalPrices[historicalPrices.length - 2]
+      actuals.length >= 2
+        ? actuals[actuals.length - 2]
         : lastPrice;
 
     const weekPrice =
-      historicalPrices.length >= 7
-        ? historicalPrices[historicalPrices.length - 7]
+      actuals.length >= 7
+        ? actuals[actuals.length - 7]
         : lastPrice;
 
-    const monthData =
-      historicalPrices.slice(-30);
-
     const avg30 =
-      monthData.reduce((a, b) => a + b, 0) /
-      monthData.length;
+      average(actuals.slice(-30));
 
     const currentYear = new Date().getFullYear();
 
     const ytdData = historical.filter((p) => {
-      const year =
-        new Date(p.Tanggal).getFullYear();
-
-      return year === currentYear;
+      return (
+        new Date(p.Tanggal).getFullYear()
+        === currentYear
+      );
     });
 
-    const ytdAvg =
-      ytdData.reduce(
-        (sum, item) =>
-          sum + Number(item.Harga_Aktual),
-        0
-      ) / ytdData.length;
+    const ytdAvg = average(
+      ytdData.map((p) =>
+        Number(p.Harga_Aktual)
+      )
+    );
 
     const deltaHarian =
       ((lastPrice - prevPrice) / prevPrice) * 100;
@@ -123,9 +126,9 @@ export const getDashboard = async (req, res) => {
     // =========================
 
     const baseline =
-      historicalPrices.length >= 30
-        ? median(historicalPrices.slice(-30))
-        : median(historicalPrices);
+      actuals.length >= 30
+        ? median(actuals.slice(-30))
+        : median(actuals);
 
     const ref =
       HARGA_REFERENSI[komoditas] || baseline;
@@ -166,10 +169,6 @@ export const getDashboard = async (req, res) => {
       };
     });
 
-    // =========================
-    // SUMMARY STATUS
-    // =========================
-
     let status = "AMAN";
 
     if (signals.some((s) => s.level === "KRITIS")) {
@@ -181,52 +180,192 @@ export const getDashboard = async (req, res) => {
     }
 
     // =========================
+    // ANALYTICS
+    // =========================
+
+    const residuals = historical.map((item) => {
+
+      const actual =
+        Number(item.Harga_Aktual);
+
+      const pred =
+        Number(item.Harga_Prediksi);
+
+      return {
+        tanggal: item.Tanggal,
+        actual,
+        predicted: pred,
+        residual: actual - pred,
+      };
+    });
+
+    const errors = historical.map((item) => {
+
+      const actual =
+        Number(item.Harga_Aktual);
+
+      const pred =
+        Number(item.Harga_Prediksi);
+
+      return pred - actual;
+    });
+
+    const scatter = historical.map((item) => ({
+      actual:
+        Number(item.Harga_Aktual),
+
+      predicted:
+        Number(item.Harga_Prediksi),
+    }));
+
+    // =========================
+    // MONTHLY BREAKDOWN
+    // =========================
+
+    const monthlyMap = {};
+
+    historical.forEach((item) => {
+
+      const actual =
+        Number(item.Harga_Aktual);
+
+      const pred =
+        Number(item.Harga_Prediksi);
+
+      const date =
+        new Date(item.Tanggal);
+
+      const month =
+        `${date.getFullYear()}-${String(
+          date.getMonth() + 1
+        ).padStart(2, "0")}`;
+
+      const errorAbs =
+        Math.abs(pred - actual);
+
+      const mape =
+        (errorAbs / actual) * 100;
+
+      if (!monthlyMap[month]) {
+        monthlyMap[month] = {
+          bulan: month,
+          errors: [],
+          mapes: [],
+          prices: [],
+          n: 0,
+        };
+      }
+
+      monthlyMap[month].errors.push(errorAbs);
+      monthlyMap[month].mapes.push(mape);
+      monthlyMap[month].prices.push(actual);
+      monthlyMap[month].n += 1;
+    });
+
+    const monthlyBreakdown =
+      Object.values(monthlyMap).map((m) => ({
+        bulan: m.bulan,
+
+        mae:
+          average(m.errors),
+
+        mape:
+          average(m.mapes),
+
+        n:
+          m.n,
+
+        harga_rata2:
+          average(m.prices),
+      }));
+
+    // =========================
     // RESPONSE
     // =========================
 
     res.json({
+
       komoditas,
       wilayah,
 
       metrics: {
         harga_terakhir: lastPrice,
-        delta_harian_pct: deltaHarian,
-        delta_mingguan_pct: deltaMingguan,
-        rata_rata_30_hari: avg30,
-        rata_rata_ytd: ytdAvg,
+
+        delta_harian_pct:
+          deltaHarian,
+
+        delta_mingguan_pct:
+          deltaMingguan,
+
+        rata_rata_30_hari:
+          avg30,
+
+        rata_rata_ytd:
+          ytdAvg,
       },
 
       evaluation:
         evaluation.length > 0
           ? {
-              mae: evaluation[0].MAE,
-              rmse: evaluation[0].RMSE,
-              mape: evaluation[0].MAPE,
-              da: evaluation[0].DA,
+              mae:
+                evaluation[0].MAE,
+
+              rmse:
+                evaluation[0].RMSE,
+
+              mape:
+                evaluation[0].MAPE,
+
+              da:
+                evaluation[0].DA,
             }
           : null,
 
       early_warning: {
+
         status,
+
         baseline,
-        threshold_waspada: thresholdWaspada,
-        threshold_kritis: thresholdKritis,
+
+        threshold_waspada:
+          thresholdWaspada,
+
+        threshold_kritis:
+          thresholdKritis,
+
         signals,
       },
 
       charts: {
+
         historical: historical.map((item) => ({
           tanggal: item.Tanggal,
-          harga_actual: item.Harga_Aktual,
+
+          harga_actual:
+            Number(item.Harga_Aktual),
+
           harga_prediksi:
-            item.Harga_Prediksi,
+            Number(item.Harga_Prediksi),
         })),
 
         future: future.map((item) => ({
           tanggal: item.Tanggal,
+
           harga_prediksi:
-            item.Harga_Prediksi,
+            Number(item.Harga_Prediksi),
         })),
+      },
+
+      analytics: {
+
+        residuals,
+
+        errors,
+
+        scatter,
+
+        monthly_breakdown:
+          monthlyBreakdown,
       },
     });
 
@@ -239,8 +378,23 @@ export const getDashboard = async (req, res) => {
   }
 };
 
-// helper median
+// =========================
+// HELPERS
+// =========================
+
+function average(arr) {
+
+  if (!arr.length) return 0;
+
+  return (
+    arr.reduce((a, b) => a + b, 0)
+    / arr.length
+  );
+}
+
 function median(arr) {
+
+  if (!arr.length) return 0;
 
   const sorted =
     [...arr].sort((a, b) => a - b);
