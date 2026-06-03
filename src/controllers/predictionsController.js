@@ -237,8 +237,8 @@ export const runPrediction = async (req, res) => {
     // =========================
 
     await clearCacheByPrefix("/predictions");
-
     await clearCacheByPrefix("/evaluations");
+    await clearCacheByPrefix("/dashboard");
 
 
     // =========================

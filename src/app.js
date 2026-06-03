@@ -6,6 +6,7 @@ import weatherRoutes from "./routes/weatherRoutes.js";
 import datasetRoutes from "./routes/datasetRoutes.js";
 import predictionsRoutes from "./routes/predictionsRoutes.js";
 import evaluationRoutes from "./routes/evaluationsRoutes.js";
+import dashboardRoutes from "./routes/dashboardRoutes.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -18,6 +19,7 @@ app.use("/weather", weatherRoutes);
 app.use("/dataset", datasetRoutes);
 app.use("/predictions", predictionsRoutes);
 app.use("/evaluations", evaluationRoutes);
+app.use("/dashboard", dashboardRoutes);
 
 app.listen(port, () => {
   console.log(`Server running at http://${host}:${port}`);

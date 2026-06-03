@@ -1,14 +1,10 @@
 import express from "express";
-import { getEvaluations }
-from "../controllers/evaluationsController.js";
+import { getDashboard }
+from "../controllers/dashboardController.js";
 import { cache } from "../middlewares/cache.js";
 
 const router = express.Router();
 
-router.get(
-  "/",
-  cache(21600),
-  getEvaluations
-);
+router.get("/", cache(900), getDashboard);
 
 export default router;
