@@ -280,6 +280,172 @@ export const getDashboard = async (req, res) => {
       }));
 
     // =========================
+    // RQ2 INTERPRETATION
+    // =========================
+
+    let evaluationInterpretation = null;
+
+    if (evaluation.length > 0) {
+
+    const evalData = evaluation[0];
+
+    let mapeStatus = "Perlu Peningkatan";
+    let mapeColor = "#ef4444";
+
+    if (evalData.MAPE < 5) {
+    mapeStatus = "Sangat Baik";
+    mapeColor = "#10b981";
+    } else if (evalData.MAPE < 10) {
+    mapeStatus = "Baik";
+    mapeColor = "#10b981";
+    } else if (evalData.MAPE < 20) {
+    mapeStatus = "Cukup";
+    mapeColor = "#f59e0b";
+    }
+
+    let daStatus = "Rendah";
+
+    if (evalData.DA > 65) {
+    daStatus = "Baik";
+    } else if (evalData.DA > 50) {
+    daStatus = "Cukup";
+    }
+
+    let interpretationText = "";
+
+    if (evalData.MAPE < 10) {
+
+    interpretationText =
+      `Model LSTM akurat dengan MAPE ${Number(
+        evalData.MAPE
+      ).toFixed(2)}% dan cocok untuk early warning distribusi.`;
+
+    } else if (evalData.MAPE < 20) {
+
+    interpretationText =
+      `Akurasi model cukup baik dengan MAPE ${Number(
+        evalData.MAPE
+      ).toFixed(2)}%. Gunakan prediksi bersama validasi pasar.`;
+
+    } else {
+
+    interpretationText =
+      `Akurasi model masih rendah dengan MAPE ${Number(
+        evalData.MAPE
+      ).toFixed(2)}%. Pertimbangkan retraining model.`;
+
+    }
+
+    evaluationInterpretation = {
+    mape_status: mapeStatus,
+    mape_color: mapeColor,
+    da_status: daStatus,
+    interpretation: interpretationText,
+    };
+    }
+
+    // =========================
+    // LEAD TIME ANALYSIS
+    // =========================
+
+    const firstWarning =
+    signals.find((s) => s.level !== "AMAN");
+
+    let leadTimeAnalysis = null;
+
+    if (firstWarning) {
+
+    const days = firstWarning.hari_ke;
+
+    let category = "";
+    let assessment = "";
+
+    if (days <= 2) {
+
+    category = "TERLAMBAT";
+
+    assessment =
+      "Sinyal terlambat — tindakan darurat diperlukan segera.";
+
+    } else if (days <= 5) {
+
+    category = "CUKUP";
+
+    assessment =
+      "Sinyal cukup — masih ada waktu koordinasi distribusi.";
+
+    } else {
+
+    category = "MEMADAI";
+
+    assessment =
+      "Sinyal memadai — cukup waktu untuk persiapan distribusi.";
+
+    }
+
+    leadTimeAnalysis = {
+    hari_ke: days,
+    category,
+    assessment,
+    };
+    }
+
+    // =========================
+    // MOVING AVERAGE
+    // =========================
+
+    const movingAverage7 = historical.map((item, idx) => {
+
+    const slice =
+    actuals.slice(
+    Math.max(0, idx - 6),
+    idx + 1
+    );
+
+    return {
+    tanggal: item.Tanggal,
+    value: average(slice),
+    };
+    });
+
+    const movingAverage30 = historical.map((item, idx) => {
+
+    const slice =
+    actuals.slice(
+    Math.max(0, idx - 29),
+    idx + 1
+    );
+
+    return {
+    tanggal: item.Tanggal,
+    value: average(slice),
+    };
+    });
+
+    // =========================
+    // DISTRIBUTION DATA
+    // =========================
+
+    const distribution = {
+    min: Math.min(...actuals),
+    max: Math.max(...actuals),
+    avg: average(actuals),
+    };
+
+    // =========================
+    // ALL COMMODITIES REGION
+    // =========================
+
+    const allCommodityQuery = await sql `SELECT DISTINCT ON ("Komoditas") "Komoditas", "Harga_Aktual", "Tanggal" FROM "Prediksi" WHERE "Wilayah" = ${wilayah} AND "Harga_Aktual" IS NOT NULL ORDER BY "Komoditas", "Tanggal" DESC`;
+
+    const allCommodities =
+    allCommodityQuery.map((item) => ({
+    komoditas: item.Komoditas,
+    harga: Number(item.Harga_Aktual),
+    tanggal: item.Tanggal,
+    }));
+
+    // =========================
     // RESPONSE
     // =========================
 
@@ -288,58 +454,94 @@ export const getDashboard = async (req, res) => {
       komoditas,
       wilayah,
 
+      // =========================
+      // HEADER / METRICS
+      // =========================
+
       metrics: {
-        harga_terakhir: lastPrice,
 
-        delta_harian_pct:
-          deltaHarian,
+      harga_terakhir:
+        lastPrice,
 
-        delta_mingguan_pct:
-          deltaMingguan,
+      delta_harian_pct:
+        deltaHarian,
 
-        rata_rata_30_hari:
-          avg30,
+      delta_mingguan_pct:
+        deltaMingguan,
 
-        rata_rata_ytd:
-          ytdAvg,
+      rata_rata_30_hari:
+        avg30,
+
+      rata_rata_ytd:
+        ytdAvg,
+
       },
 
+      // =========================
+      // MODEL EVALUATION
+      // =========================
+
       evaluation:
-        evaluation.length > 0
-          ? {
-              mae:
-                evaluation[0].MAE,
+      evaluation.length > 0
+      ? {
+      mae:
+      evaluation[0].MAE,
 
-              rmse:
-                evaluation[0].RMSE,
+            rmse:
+              evaluation[0].RMSE,
 
-              mape:
-                evaluation[0].MAPE,
+            mape:
+              evaluation[0].MAPE,
 
-              da:
-                evaluation[0].DA,
-            }
-          : null,
+            da:
+              evaluation[0].DA,
+          }
+        : null,
+
+      // =========================
+      // RQ2 INTERPRETATION
+      // =========================
+
+      evaluation_interpretation:
+      evaluationInterpretation,
+
+      // =========================
+      // EARLY WARNING
+      // =========================
 
       early_warning: {
 
-        status,
+      status,
 
-        baseline,
+      baseline,
 
-        threshold_waspada:
-          thresholdWaspada,
+      threshold_waspada:
+        thresholdWaspada,
 
-        threshold_kritis:
-          thresholdKritis,
+      threshold_kritis:
+        thresholdKritis,
 
-        signals,
+      signals,
+
       },
+
+      // =========================
+      // LEAD TIME ANALYSIS
+      // =========================
+
+      lead_time_analysis:
+      leadTimeAnalysis,
+
+      // =========================
+      // CHART DATA
+      // =========================
 
       charts: {
 
-        historical: historical.map((item) => ({
-          tanggal: item.Tanggal,
+      historical:
+        historical.map((item) => ({
+          tanggal:
+            item.Tanggal,
 
           harga_actual:
             Number(item.Harga_Aktual),
@@ -348,26 +550,61 @@ export const getDashboard = async (req, res) => {
             Number(item.Harga_Prediksi),
         })),
 
-        future: future.map((item) => ({
-          tanggal: item.Tanggal,
+      future:
+        future.map((item) => ({
+          tanggal:
+            item.Tanggal,
 
           harga_prediksi:
             Number(item.Harga_Prediksi),
         })),
+
       },
+
+      // =========================
+      // MOVING AVERAGE
+      // =========================
+
+      moving_average: {
+
+      ma7:
+        movingAverage7,
+
+      ma30:
+        movingAverage30,
+
+      },
+
+      // =========================
+      // ANALYTICS
+      // =========================
 
       analytics: {
 
-        residuals,
+      residuals,
 
-        errors,
+      errors,
 
-        scatter,
+      scatter,
 
-        monthly_breakdown:
-          monthlyBreakdown,
+      monthly_breakdown:
+        monthlyBreakdown,
+
       },
-    });
+
+      // =========================
+      // DISTRIBUTION
+      // =========================
+
+      distribution,
+
+      // =========================
+      // ALL COMMODITIES
+      // =========================
+
+      all_commodities:
+      allCommodities,
+      });
 
   } catch (err) {
 
