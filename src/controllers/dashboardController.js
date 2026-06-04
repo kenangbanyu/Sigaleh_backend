@@ -436,14 +436,72 @@ export const getDashboard = async (req, res) => {
     // ALL COMMODITIES REGION
     // =========================
 
-    const allCommodityQuery = await sql `SELECT DISTINCT ON ("Komoditas") "Komoditas", "Harga_Aktual", "Tanggal" FROM "Prediksi" WHERE "Wilayah" = ${wilayah} AND "Harga_Aktual" IS NOT NULL ORDER BY "Komoditas", "Tanggal" DESC`;
+    const allCommodityQuery = await sql`
+    WITH ranked AS (
+      SELECT
+        "Komoditas",
+        "Harga_Aktual",
+        "Tanggal",
+        ROW_NUMBER() OVER (
+          PARTITION BY "Komoditas"
+          ORDER BY "Tanggal" DESC
+        ) as rn
+      FROM "Prediksi"
+      WHERE "Wilayah" = ${wilayah}
+      AND "Harga_Aktual" IS NOT NULL
+    )
+
+    SELECT
+      current."Komoditas",
+      current."Harga_Aktual"
+        AS harga_sekarang,
+      previous."Harga_Aktual"
+        AS harga_sebelumnya,
+      current."Tanggal"
+    FROM ranked current
+    LEFT JOIN ranked previous
+    ON current."Komoditas" = previous."Komoditas"
+    AND previous.rn = 2
+    WHERE current.rn = 1
+    `;
 
     const allCommodities =
-    allCommodityQuery.map((item) => ({
-    komoditas: item.Komoditas,
-    harga: Number(item.Harga_Aktual),
-    tanggal: item.Tanggal,
-    }));
+      allCommodityQuery.map((item) => {
+
+        const currentPrice =
+          Number(item.harga_sekarang);
+
+        const previousPrice =
+          Number(
+            item.harga_sebelumnya
+            || currentPrice
+          );
+
+        const perubahanPct =
+          previousPrice > 0
+            ? (
+                (
+                  (currentPrice - previousPrice)
+                  / previousPrice
+                ) * 100
+              )
+            : 0;
+
+        return {
+          komoditas:
+            item.Komoditas,
+          harga:
+            currentPrice,
+          harga_sebelumnya:
+            previousPrice,
+          perubahan_pct:
+            Number(
+              perubahanPct.toFixed(2)
+            ),
+          tanggal:
+            item.Tanggal,
+        };
+      });
 
     // =========================
     // RESPONSE
