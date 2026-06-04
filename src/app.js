@@ -1,5 +1,6 @@
 import express from "express";
 import "dotenv/config";
+import cors from "cors"
 import authRoutes from "./routes/authRoutes.js";
 import commoditiesRoutes from "./routes/commoditiesRoutes.js";
 import weatherRoutes from "./routes/weatherRoutes.js";
@@ -12,6 +13,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 const host = process.env.NODE_ENV !== 'production' ? 'localhost' : '0.0.0.0';
 
+app.use(cors());
 app.use(express.json());
 app.use("/auth", authRoutes);
 app.use("/commodities", commoditiesRoutes);
